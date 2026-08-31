@@ -92,7 +92,7 @@ public class AuthManager : MonoBehaviour
             Debug.Log(www.downloadHandler.text);
             UserResponse userData = JsonUtility.FromJson<UserResponse>(www.downloadHandler.text);
             Debug.Log("User profile: " + userData.usuario.username);
-            currentScore = userData.usuario.score;
+            currentScore = (userData.usuario.data != null) ? userData.usuario.data.score : 0;
             ShowProfile(userData.usuario.username);
         }
     }
@@ -123,7 +123,7 @@ public class AuthManager : MonoBehaviour
 
             token = userResponse.token;
             username = userResponse.usuario.username;
-            currentScore = userResponse.usuario.score;
+            currentScore = (userResponse.usuario.data != null) ? userResponse.usuario.data.score : 0;
 
             PlayerPrefs.SetString("token", token);
             PlayerPrefs.SetString("username", username);
@@ -163,18 +163,20 @@ public class AuthManager : MonoBehaviour
     }
 
     // --- Nuevo: actualizar el puntaje del usuario autenticado ---
-    // NOTA: revisa en la consola (Debug.Log del paso de Login/GetProfile) el nombre
-    // exacto del campo de puntaje que devuelve tu API (por ejemplo "score" o "puntaje")
-    // y ajusta la clase UserData si es distinto.
+    // La API identifica al usuario por el token (no por la URL) y espera el
+    // puntaje anidado dentro de "data": PATCH /api/usuarios con body
+    // { "username": "...", "data": { "score": N } }.
     IEnumerator UpdateScore(int nuevoPuntaje)
     {
-        ScoreData scoreData = new ScoreData();
-        scoreData.score = nuevoPuntaje;
-        string jsonData = JsonUtility.ToJson(scoreData);
+        UpdateScoreRequest req = new UpdateScoreRequest();
+        req.username = username;
+        req.data = new UserGameData();
+        req.data.score = nuevoPuntaje;
+        string jsonData = JsonUtility.ToJson(req);
 
         Debug.Log("Sending score JSON: " + jsonData);
 
-        UnityWebRequest www = new UnityWebRequest(Url + "/api/usuarios/" + username, "PUT");
+        UnityWebRequest www = new UnityWebRequest(Url + "/api/usuarios", "PATCH");
         byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonData);
         www.uploadHandler = new UploadHandlerRaw(bodyRaw);
         www.downloadHandler = new DownloadHandlerBuffer();
@@ -224,7 +226,7 @@ public class AuthManager : MonoBehaviour
             yield break;
         }
 
-        UserData[] ordenados = usuarios.OrderByDescending(u => u.score).ToArray();
+        UserData[] ordenados = usuarios.OrderByDescending(u => (u.data != null) ? u.data.score : 0).ToArray();
         DisplayLeaderboard(ordenados);
     }
 
@@ -253,7 +255,8 @@ public class AuthManager : MonoBehaviour
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < usuarios.Length; i++)
         {
-            sb.AppendLine((i + 1) + ".  " + usuarios[i].username + "   -   " + usuarios[i].score);
+            int puntaje = (usuarios[i].data != null) ? usuarios[i].data.score : 0;
+            sb.AppendLine((i + 1) + ".  " + usuarios[i].username + "   -   " + puntaje);
         }
         leaderboardText.text = sb.ToString();
     }
@@ -287,9 +290,16 @@ public class AuthData
 }
 
 [System.Serializable]
-public class ScoreData
+public class UserGameData
 {
     public int score;
+}
+
+[System.Serializable]
+public class UpdateScoreRequest
+{
+    public string username;
+    public UserGameData data;
 }
 
 [System.Serializable]
@@ -306,7 +316,7 @@ public class UserData
     public string username;
     public string password;
     public bool estado;
-    public int score;
+    public UserGameData data;
 }
 
 [System.Serializable]
